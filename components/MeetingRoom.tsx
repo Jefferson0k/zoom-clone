@@ -26,34 +26,54 @@ import { cn } from '@/lib/utils';
 
 type CallLayoutType = 'grid' | 'speaker-left' | 'speaker-right';
 
+interface SpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+
+interface SpeechRecognitionResult {
+  [index: number]: SpeechRecognitionAlternative;
+  length: number;
+}
+
+interface SpeechRecognitionResultList {
+  [index: number]: SpeechRecognitionResult;
+  length: number;
+}
+
+interface SpeechRecognitionEvent extends Event {
+  results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  error: any;
+}
+
 const MeetingRoom = () => {
   const searchParams = useSearchParams();
-  const isPersonalRoom = !!searchParams.get('personal');
+  const isPersonalRoom = Boolean(searchParams.get('personal'));
   const router = useRouter();
   const [layout, setLayout] = useState<CallLayoutType>('speaker-left');
   const [showParticipants, setShowParticipants] = useState(false);
-  const [prediction, setPrediction] = useState<string | null>(null); // Predicción recibida del backend
+  const [prediction, setPrediction] = useState<string | null>(null);
   const [recording, setRecording] = useState<boolean>(false);
-  const [recognizedWord, setRecognizedWord] = useState<string | null>(null); // Estado para la palabra reconocida
+  const [recognizedWord, setRecognizedWord] = useState<string | null>(null);
   const { useCallCallingState } = useCallStateHooks();
-  const [microphoneEnabled] = useState<boolean>(true); // Estado para verificar si el micrófono está activado
-  const [, setIsListening] = useState<boolean>(false);
+  const [microphoneEnabled] = useState<boolean>(true);
 
   const callingState = useCallCallingState();
-  // Función para obtener el GIF correspondiente a una palabra
+
   const getGifForWord = (word: string) => {
     const sanitizedWord = word.toLowerCase().trim();
-    const gifPath = `/gif/${sanitizedWord}.gif`; // Ruta esperada del GIF
-    console.log('Ruta del GIF:', gifPath); // Verifica la ruta del GIF en la consola
+    const gifPath = `/gif/${sanitizedWord}.gif`;
+    console.log('Ruta del GIF:', gifPath);
     return gifPath;
   };
-
-  type BlobPart = string | ArrayBuffer | ArrayBufferView | Blob;
 
   const startRecordingAndPredict = () => {
     navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
       const mediaRecorder = new MediaRecorder(stream);
-      const chunks: BlobPart[] = [];
+      const chunks: Array<Blob> = [];
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -66,94 +86,85 @@ const MeetingRoom = () => {
         const formData = new FormData();
         formData.append('file', videoBlob, 'señas.mp4');
 
-        // Enviar el video al backend
-        const response = await fetch('http://localhost:8000/lsp/recognize-actions-from-video/', {
-          method: 'POST',
-          body: formData,
-        });
+        try {
+          const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/lsp/recognize-actions-from-video/`, {
+            method: 'POST',
+            body: formData,
+          });
 
-        const result = await response.json();
-        setPrediction(result.prediction); // Actualiza la predicción
+          if (!response.ok) {
+            throw new Error('Network response was not ok');
+          }
+
+          const result = await response.json();
+          setPrediction(result.prediction);
+        } catch (error) {
+          console.error('Error al enviar el video:', error);
+          setPrediction('Error en la predicción');
+        }
       };
 
-      // Empezar la grabación y detener después de 5 segundos
       mediaRecorder.start();
       setRecording(true);
 
       setTimeout(() => {
         mediaRecorder.stop();
         setRecording(false);
-      }, 5000); // Grabar por 5 segundos
+      }, 5000);
     });
   };
 
-  interface SpeechRecognitionEvent extends Event {
-    results: {
-      transcript: string;
-    }[][];
-  }
-
-  interface SpeechRecognitionErrorEvent extends Event {
-    error: string;
-  }
-   
-  // Inicializar el reconocimiento de voz en español
   useEffect(() => {
     if (!('webkitSpeechRecognition' in window)) {
       console.warn('Speech Recognition API no es compatible');
       return;
     }
-    const recognition = new (window as any);
-    recognition.lang = 'es-ES'; // Cambia el idioma a español
+
+    const SpeechRecognition = (window as any).webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'es-ES';
     recognition.interimResults = false;
     recognition.continuous = true;
-  
+
     recognition.onstart = () => {
       console.log('Reconocimiento de voz iniciado');
-      setIsListening(true);
     };
-  
+
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      if (!microphoneEnabled) return; // No hacer nada si el micrófono está apagado
-  
+      if (!microphoneEnabled) return;
+
       const results = Array.from(event.results);
       const lastResult = results[results.length - 1];
       if (lastResult && lastResult[0]) {
-        let transcript = lastResult[0].transcript.trim();
-  
-        // Eliminar cualquier signo de puntuación adicional
-        transcript = transcript.replace(/[.,!?]/g, '').toLowerCase();
-  
+        const transcript = lastResult[0].transcript.trim().replace(/[.,!?]/g, '').toLowerCase();
         console.log('Transcripción limpia:', transcript);
-        setRecognizedWord(transcript); // Actualiza la palabra reconocida
-  
-        // Desaparece el GIF después de 8 segundos
+        setRecognizedWord(transcript);
+
         setTimeout(() => {
           setRecognizedWord(null);
         }, 8000);
       }
     };
-  
+
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.error('Error en el reconocimiento de voz:', event.error);
     };
-  
+
     recognition.onend = () => {
       console.log('Reconocimiento de voz terminado');
-      recognition.start(); // Reinicia automáticamente el reconocimiento de voz
+      if (callingState === CallingState.JOINED && microphoneEnabled) {
+        recognition.start();
+      }
     };
-  
+
     if (callingState === CallingState.JOINED && microphoneEnabled) {
       recognition.start();
-    } else {
-      recognition.stop();
     }
-  
+
     return () => {
       recognition.stop();
     };
-  }, [callingState, microphoneEnabled, setIsListening]);
-  
+  }, [callingState, microphoneEnabled]);
 
   if (callingState !== CallingState.JOINED) return <Loader />;
 
@@ -176,58 +187,52 @@ const MeetingRoom = () => {
         </div>
         <div
           className={cn('h-[calc(100vh-86px)] hidden ml-2', {
-            'show-block': showParticipants,
+            'block': showParticipants,
           })}
         >
           <CallParticipantsList onClose={() => setShowParticipants(false)} />
         </div>
       </div>
 
-      {/* Mostrar el GIF en un recuadro al costado si la palabra reconocida coincide y no está grabando */}
       {recognizedWord && !recording && (
         <div className="image-container">
-        <Image
-          src={getGifForWord(recognizedWord)}
-          alt={`GIF for ${recognizedWord}`}
-          className="image-size"
-          width={192} // 48 * 4 (para w-48)
-          height={192} // 48 * 4 (para h-48)
-          onError={(e) => {
-            // Cambiar la imagen a no.png si el GIF no se encuentra
-            const imgElement = e.target as HTMLImageElement;
-            imgElement.src = '/gif/no.png';
-          }}
-        />
-      </div>
+          <Image
+            src={getGifForWord(recognizedWord)}
+            alt={`GIF for ${recognizedWord}`}
+            width={500} 
+            height={300}
+            onError={(e) => {
+              const imgElement = e.target as HTMLImageElement;
+              imgElement.src = '/gif/no.png';
+            }}
+            className="image-size"
+          />
+        </div>
       )}
-      {/* Mostrar la predicción obtenida del backend */}
+      
       {prediction && (
         <div className="prediction-container">
           <p>Predicción: {prediction}</p>
         </div>
       )}
 
-      {/* Botón para grabar video y predecir, ahora al lado izquierdo */}
-      <div className="modal-container"> {/* Usando la clase modal-container */}
-        <button
+      <div className="absolute left-10 top-32 p-4">
+      <button
           onClick={startRecordingAndPredict}
-          className="btn-record" // Usando la clase btn-record
-          disabled={recording} // Deshabilitar el botón mientras se está grabando
+          className="btn-recording"
+          disabled={recording}
         >
           {recording ? 'Grabando...' : 'Grabar Señal'}
         </button>
       </div>
 
-      {/* Controles de videollamada */}
       <div className="fixed bottom-0 flex w-full items-center justify-center gap-5">
         <CallControls onLeave={() => router.push(`/`)} />
 
         <DropdownMenu>
-          <div className="flex items-center">
-            <DropdownMenuTrigger className="cursor-pointer rounded-2xl bg-[#19232d] px-4 py-2 hover:bg-[#4c535b]">
-              <LayoutList size={20} className="text-white" />
-            </DropdownMenuTrigger>
-          </div>
+          <DropdownMenuTrigger className="cursor-pointer rounded-2xl bg-[#19232d] px-4 py-2 hover:bg-[#4c535b]">
+            <LayoutList size={20} className="text-white" />
+          </DropdownMenuTrigger>
           <DropdownMenuContent className="border-dark-1 bg-dark-1 text-white">
             {['Grid', 'Speaker-Left', 'Speaker-Right'].map((item, index) => (
               <div key={index}>
@@ -238,7 +243,7 @@ const MeetingRoom = () => {
                 >
                   {item}
                 </DropdownMenuItem>
-                <DropdownMenuSeparator className="border-dark-1" />
+                {index < 2 && <DropdownMenuSeparator className="border-dark-1" />}
               </div>
             ))}
           </DropdownMenuContent>
