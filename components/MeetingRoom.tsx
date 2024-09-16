@@ -11,6 +11,7 @@ import {
 } from '@stream-io/video-react-sdk';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Users, LayoutList } from 'lucide-react';
+import Image from 'next/image';
 
 import {
   DropdownMenu,
@@ -31,15 +32,14 @@ const MeetingRoom = () => {
   const router = useRouter();
   const [layout, setLayout] = useState<CallLayoutType>('speaker-left');
   const [showParticipants, setShowParticipants] = useState(false);
-  const [isListening, setIsListening] = useState<boolean>(false); // Estado de escucha
   const [prediction, setPrediction] = useState<string | null>(null); // Predicción recibida del backend
   const [recording, setRecording] = useState<boolean>(false);
   const [recognizedWord, setRecognizedWord] = useState<string | null>(null); // Estado para la palabra reconocida
   const { useCallCallingState } = useCallStateHooks();
-  const [microphoneEnabled, setMicrophoneEnabled] = useState<boolean>(true); // Estado para verificar si el micrófono está activado
+  const [microphoneEnabled] = useState<boolean>(true); // Estado para verificar si el micrófono está activado
+  const [, setIsListening] = useState<boolean>(false);
 
   const callingState = useCallCallingState();
-
   // Función para obtener el GIF correspondiente a una palabra
   const getGifForWord = (word: string) => {
     const sanitizedWord = word.toLowerCase().trim();
@@ -48,7 +48,8 @@ const MeetingRoom = () => {
     return gifPath;
   };
 
-  // Función para capturar una imagen de la cámara y enviarla al backend para la predicción
+  type BlobPart = string | ArrayBuffer | ArrayBufferView | Blob;
+
   const startRecordingAndPredict = () => {
     navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
       const mediaRecorder = new MediaRecorder(stream);
@@ -86,63 +87,73 @@ const MeetingRoom = () => {
     });
   };
 
+  interface SpeechRecognitionEvent extends Event {
+    results: {
+      transcript: string;
+    }[][];
+  }
+
+  interface SpeechRecognitionErrorEvent extends Event {
+    error: string;
+  }
+   
   // Inicializar el reconocimiento de voz en español
   useEffect(() => {
     if (!('webkitSpeechRecognition' in window)) {
       console.warn('Speech Recognition API no es compatible');
       return;
     }
-
-    const recognition = new (window as any).webkitSpeechRecognition();
+    const recognition = new (window as any);
     recognition.lang = 'es-ES'; // Cambia el idioma a español
     recognition.interimResults = false;
     recognition.continuous = true;
-
+  
     recognition.onstart = () => {
       console.log('Reconocimiento de voz iniciado');
       setIsListening(true);
     };
-
+  
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       if (!microphoneEnabled) return; // No hacer nada si el micrófono está apagado
-
+  
       const results = Array.from(event.results);
       const lastResult = results[results.length - 1];
       if (lastResult && lastResult[0]) {
         let transcript = lastResult[0].transcript.trim();
-
+  
         // Eliminar cualquier signo de puntuación adicional
         transcript = transcript.replace(/[.,!?]/g, '').toLowerCase();
-
+  
         console.log('Transcripción limpia:', transcript);
         setRecognizedWord(transcript); // Actualiza la palabra reconocida
-
+  
         // Desaparece el GIF después de 8 segundos
         setTimeout(() => {
           setRecognizedWord(null);
         }, 8000);
       }
     };
-
+  
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.error('Error en el reconocimiento de voz:', event.error);
     };
-
+  
     recognition.onend = () => {
       console.log('Reconocimiento de voz terminado');
       recognition.start(); // Reinicia automáticamente el reconocimiento de voz
     };
-
+  
     if (callingState === CallingState.JOINED && microphoneEnabled) {
       recognition.start();
     } else {
       recognition.stop();
     }
-
+  
     return () => {
       recognition.stop();
     };
-  }, [callingState, microphoneEnabled]);
+  }, [callingState, microphoneEnabled, setIsListening]);
+  
 
   if (callingState !== CallingState.JOINED) return <Loader />;
 
@@ -174,31 +185,33 @@ const MeetingRoom = () => {
 
       {/* Mostrar el GIF en un recuadro al costado si la palabra reconocida coincide y no está grabando */}
       {recognizedWord && !recording && (
-        <div className="absolute top-10 right-10 p-4 bg-gray-800 rounded-lg shadow-lg">
-          <img
-            src={getGifForWord(recognizedWord)}
-            alt={`GIF for ${recognizedWord}`}
-            className="w-48 h-48" // Ajusta el tamaño del GIF
-            onError={(e) => {
-              // Cambiar la imagen a no.png si el GIF no se encuentra
-              const imgElement = e.target as HTMLImageElement;
-              imgElement.src = '/gif/no.png';
-            }}
-          />
-        </div>
+        <div className="image-container">
+        <Image
+          src={getGifForWord(recognizedWord)}
+          alt={`GIF for ${recognizedWord}`}
+          className="image-size"
+          width={192} // 48 * 4 (para w-48)
+          height={192} // 48 * 4 (para h-48)
+          onError={(e) => {
+            // Cambiar la imagen a no.png si el GIF no se encuentra
+            const imgElement = e.target as HTMLImageElement;
+            imgElement.src = '/gif/no.png';
+          }}
+        />
+      </div>
       )}
       {/* Mostrar la predicción obtenida del backend */}
       {prediction && (
-        <div className="absolute top-20 right-10 p-4 bg-gray-800 rounded-lg shadow-lg">
+        <div className="prediction-container">
           <p>Predicción: {prediction}</p>
         </div>
       )}
 
       {/* Botón para grabar video y predecir, ahora al lado izquierdo */}
-      <div className="absolute top-32 left-10 p-4"> {/* Cambié "right-10" por "left-10" */}
+      <div className="modal-container"> {/* Usando la clase modal-container */}
         <button
           onClick={startRecordingAndPredict}
-          className="px-4 py-2 bg-blue-500 text-white rounded-lg"
+          className="btn-record" // Usando la clase btn-record
           disabled={recording} // Deshabilitar el botón mientras se está grabando
         >
           {recording ? 'Grabando...' : 'Grabar Señal'}

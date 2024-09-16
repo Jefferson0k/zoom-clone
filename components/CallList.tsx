@@ -106,7 +106,7 @@ const CallList = ({ type }: { type: 'ended' | 'upcoming' | 'recordings' | 'avata
           />
         ))
       ) : type === 'avatar3dcall' ? ( // Renderiza el avatar 3D cuando no hay datos para avatar3dcall
-        <RotatingAvatarCanvas onClick={() => console.log('Avatar clicked')} />
+        <RotatingAvatarCanvas avatarId={1} />
       ) : (
         <h1 className="text-2xl font-bold text-white">{noCallsMessage}</h1>
       )}

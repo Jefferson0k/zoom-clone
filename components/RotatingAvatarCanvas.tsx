@@ -22,7 +22,7 @@ const RotatingAvatarCanvas: React.FC<RotatingAvatarCanvasProps> = ({ avatarId })
       <Canvas
         shadows
         camera={{ position: [0, 2, 5], fov: 30 }}
-        className="w-full h-full"
+        className="full-size"
       >
         <ambientLight intensity={0.5} />
         <pointLight position={[10, 10, 10]} intensity={1.5} />
@@ -47,9 +47,9 @@ const RotatingAvatarCanvas: React.FC<RotatingAvatarCanvasProps> = ({ avatarId })
         </group>
       </Canvas>
       {selectedAvatar === avatarId && (
-        <div className="absolute top-0 left-0 text-white p-2 bg-green-600 rounded">
-          {avatarId}
-        </div>
+        <div className="avatar-container">
+        {avatarId}
+      </div>
       )}
     </>
   );

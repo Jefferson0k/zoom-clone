@@ -157,3 +157,32 @@
     width: 100%;
   }
 }
+
+/* globals.css */
+
+.btn-record {
+  @apply bg-blue-500 text-white px-4 py-2 rounded-lg;
+}
+
+.modal-container {
+  @apply absolute left-10 top-32 p-4;
+}
+.prediction-container {
+  @apply absolute right-10 top-20 p-4 bg-gray-800 rounded-lg shadow-lg;
+}
+
+.image-container {
+  @apply absolute top-10 right-10 p-4 bg-gray-800 rounded-lg shadow-lg;
+}
+
+.image-size {
+  @apply w-48 h-48;
+}
+.avatar-container {
+  @apply absolute top-0 left-0 text-white p-2 bg-green-600 rounded;
+}
+
+/* Contenedor para el Canvas */
+.full-size {
+  @apply w-full h-full;
+}
