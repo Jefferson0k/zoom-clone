@@ -11,7 +11,6 @@ import {
 } from '@stream-io/video-react-sdk';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Users, LayoutList } from 'lucide-react';
-import Image from 'next/image';
 
 import {
   DropdownMenu,
@@ -65,7 +64,7 @@ const MeetingRoom = () => {
 
   const getGifForWord = (word: string) => {
     const sanitizedWord = word.toLowerCase().trim();
-    const gifPath = `/gif/${sanitizedWord}.gif`;
+    const gifPath = `/gif/${encodeURIComponent(sanitizedWord)}.gif`; // Usa encodeURIComponent para manejar caracteres especiales
     console.log('Ruta del GIF:', gifPath);
     return gifPath;
   };
@@ -74,44 +73,59 @@ const MeetingRoom = () => {
     navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
       const mediaRecorder = new MediaRecorder(stream);
       const chunks: Array<Blob> = [];
-
+  
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           chunks.push(event.data);
         }
       };
-
+  
       mediaRecorder.onstop = async () => {
         const videoBlob = new Blob(chunks, { type: 'video/mp4' });
         const formData = new FormData();
         formData.append('file', videoBlob, 'señas.mp4');
-
+  
         try {
           const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/lsp/recognize-actions-from-video/`, {
             method: 'POST',
             body: formData,
           });
-
+  
           if (!response.ok) {
             throw new Error('Network response was not ok');
           }
-
+  
           const result = await response.json();
-          setPrediction(result.prediction);
+          console.log('Predicción recibida:', result.action);
+          setPrediction(result.action);
+  
+          // Reproducir el audio correspondiente
+          playAudioForAction(result.action);
         } catch (error) {
           console.error('Error al enviar el video:', error);
           setPrediction('Error en la predicción');
         }
       };
-
+  
       mediaRecorder.start();
       setRecording(true);
-
+  
       setTimeout(() => {
         mediaRecorder.stop();
         setRecording(false);
-      }, 5000);
+      }, 10000); // 10 segundos de grabación
     });
+  };
+  
+  const playAudioForAction = (action: string) => {
+    const audioPath = `/audios/${action}.mp3`;
+    const audio = new Audio(audioPath);
+    audio.oncanplaythrough = () => {
+      audio.play().catch(e => console.error('Error al reproducir el audio:', e));
+    };
+    audio.onerror = () => {
+      console.error(`No se pudo cargar el audio para la acción: ${action}`);
+    };
   };
 
   useEffect(() => {
@@ -195,21 +209,21 @@ const MeetingRoom = () => {
       </div>
 
       {recognizedWord && !recording && (
-        <div className="image-container">
-          <Image
-            src={getGifForWord(recognizedWord)}
-            alt={`GIF for ${recognizedWord}`}
-            width={500} 
-            height={300}
-            onError={(e) => {
-              const imgElement = e.target as HTMLImageElement;
-              imgElement.src = '/gif/no.png';
-            }}
-            className="image-size"
-          />
-        </div>
-      )}
-      
+  <div className="image-container">
+    <img
+      src={getGifForWord(recognizedWord)}
+      alt={`GIF for ${recognizedWord}`}
+      width={500}
+      height={300}
+      onError={(e) => {
+        const imgElement = e.target as HTMLImageElement;
+        imgElement.src = '/gif/no.png'; // Asegúrate de que esta ruta sea correcta
+      }}
+      className="image-size"
+    />
+  </div>
+)}
+ 
       {prediction && (
         <div className="prediction-container">
           <p>Predicción: {prediction}</p>
