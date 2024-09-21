@@ -113,7 +113,7 @@ const MeetingRoom = () => {
       setTimeout(() => {
         mediaRecorder.stop();
         setRecording(false);
-      }, 10000); // 10 segundos de grabación
+      }, 5000); // 10 segundos de grabación
     });
   };
   
